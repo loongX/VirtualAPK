@@ -26,6 +26,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
@@ -82,7 +83,8 @@ public class LocalService extends Service {
 
         ComponentName component = target.getComponent();
         LoadedPlugin plugin = mPluginManager.getLoadedPlugin(component);
-
+        // ClassNotFoundException when unmarshalling in Android 5.1
+        target.setExtrasClassLoader(plugin.getClassLoader());
         switch (command) {
             case EXTRA_COMMAND_START_SERVICE: {
                 ActivityThread mainThread = (ActivityThread)ReflectUtil.getActivityThread(getBaseContext());
@@ -138,7 +140,13 @@ public class LocalService extends Service {
                     IBinder binder = service.onBind(target);
                     IBinder serviceConnection = PluginUtil.getBinder(intent.getExtras(), "sc");
                     IServiceConnection iServiceConnection = IServiceConnection.Stub.asInterface(serviceConnection);
-                    iServiceConnection.connected(component, binder);
+                    if (Build.VERSION.SDK_INT >= 26) {
+                        ReflectUtil.invokeNoException(IServiceConnection.class, iServiceConnection, "connected",
+                                new Class[]{ComponentName.class, IBinder.class, boolean.class},
+                                new Object[]{component, binder, false});
+                    } else {
+                        iServiceConnection.connected(component, binder);
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
